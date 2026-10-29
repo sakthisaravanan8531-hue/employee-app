@@ -1,88 +1,71 @@
-# People — employee workspace
+# People — low-cost employee workspace
 
-React frontend, Node.js REST API and PostgreSQL, with an AWS CDK stack and GitHub Actions delivery pipeline.
+React frontend, Node.js API and DynamoDB, deployed with AWS Amplify Hosting, Lambda and API Gateway. The owner approved replacing the original EC2/ASG/ALB/RDS assignment with a lower-cost serverless design.
 
-**Target AWS account:** `912010732788` · **Default region:** `us-east-1`.
+**AWS target:** account `912010732788`, region `us-east-1`. **No domain purchase required.**
 
-**Deployment status:** source code is implemented and locally validated. AWS deployment, a live URL, SNS delivery, EC2 resilience tests and GitHub-to-AWS delivery require an authorized AWS identity and have not been demonstrated by local tests. A stack output is not a live application until the release job finishes.
+**Status:** implemented and locally tested; live AWS deployment still requires an authorized AWS identity. No live URL or AWS failure-test result is claimed by local validation.
 
 ## Run locally
 
-Use Node.js 24 on Linux/macOS, with npm. No Docker, external database, AWS credentials or domain is needed for local development.
+Use Node.js 24 and npm on Linux/macOS:
 
 ```sh
 npm ci
 npm run dev:local
 ```
 
-This starts a persistent local PostgreSQL instance and both development servers. The frontend listens on port 5173 and proxies `/api` to the backend on port 8080. Local administrator credentials are generated once in the ignored, permission-restricted `.env` file. Read that file locally to sign in; never commit it. Stop with Ctrl+C. `.local/postgres` retains local records between runs. To use an existing PostgreSQL database instead, create `.env` from `.env.example` and run `npm run dev`.
+The launcher creates a protected, ignored `.env` containing randomly generated local administrator credentials, then starts the React development server on port 5173 and API on 8080. Read `.env` locally to sign in; do not publish its values. Local employee records persist in `.local/employees.sqlite` through the SQLite development adapter. AWS uses DynamoDB, not SQLite. No AWS credentials, Docker or separate database process are needed locally. Node's experimental SQLite warning is expected.
 
 ```sh
 npm run check
-# With the local servers running:
+# While the development servers are running:
 node --env-file=.env deployment/scripts/local-smoke.mjs
 ```
 
-`check` runs real PostgreSQL-backed API tests, frontend interaction tests, production frontend build, infrastructure type checking/assertions, release-tool tests and CloudFormation synthesis. The test database is temporary and separate from development data. The npm-distributed local PostgreSQL binary is a development dependency only; AWS uses RDS PostgreSQL 17.
+`check` runs the API persistence/security tests, DynamoDB request/transaction tests, React interaction tests, production builds, bundled Lambda API Gateway event test, CDK assertions, release/rollback tests and offline CloudFormation synthesis. Cloud API behavior still requires live acceptance tests. Ctrl+C stops the local process group; the SQLite file retains records.
 
 ## Application
 
-Sign in → dashboard → employee directory → add, edit, search and delete employees. No default production password is embedded in source. This application supports one administrator generated in Secrets Manager; it is not a multi-user identity platform. For workforce SSO, add Cognito or your organization's identity provider before broader adoption.
+Sign in → dashboard → employee directory → add, edit, search and delete employees.
 
-| Endpoint                                             | Purpose                          |
-| ---------------------------------------------------- | -------------------------------- |
-| `POST /api/login`, `POST /api/logout`, `GET /api/me` | Administrator session            |
-| `GET /api/employees`                                 | List employees                   |
-| `POST /api/employees`                                | Add employee                     |
-| `PUT /api/employees/{id}`                            | Update employee                  |
-| `DELETE /api/employees/{id}`                         | Delete employee                  |
-| `GET /api/health`                                    | Database readiness and build SHA |
+| Endpoint                                             | Purpose                               |
+| ---------------------------------------------------- | ------------------------------------- |
+| `POST /api/login`, `POST /api/logout`, `GET /api/me` | Administrator sessions                |
+| `GET /api/employees`                                 | List employees                        |
+| `POST /api/employees`                                | Create employee                       |
+| `PUT /api/employees/{id}`                            | Update employee                       |
+| `DELETE /api/employees/{id}`                         | Delete employee                       |
+| `GET /api/health`                                    | Database connectivity and release SHA |
 
-Requests use JSON. Employee mutations require `name`, `email`, `department` and `title`. Database operations are parameterized; IDs and fields are validated. Sessions use signed, expiring HttpOnly cookies, `Secure` in production and SameSite Strict. API responses prohibit caching. Login has per-instance rate limiting. JSON-only writes and cross-site request rejection provide CSRF protection for the same-origin UI.
+Mutations use JSON with `name`, `email`, `department` and `title`. Fields and UUIDs are validated. Sessions use expiring signed HttpOnly cookies, Secure in AWS and SameSite Strict. Cross-site writes and form posts are rejected; API responses are not cached. One administrator is generated securely in Secrets Manager. This is a small demo, not an organizational identity-management platform.
 
-## AWS architecture without a purchased domain
-
-Per the updated requirement, Amplify Hosting provides the default `https://main.<app-id>.amplifyapp.com` address, managed certificates and CDN. No domain registration or Route 53 hosted zone is needed.
+## Architecture
 
 ```mermaid
 flowchart TD
-    Browser[Browser / HTTPS] --> Amplify[Amplify Hosting / React]
-    Amplify -->|"/api/* HTTPS reverse proxy"| API[API Gateway HTTP API / AWS HTTPS endpoint]
-    API --> Link[VPC Link]
-    Link --> ALB[Internal Application Load Balancer]
-    ALB --> EC21[Private EC2 / AZ 1]
-    ALB --> EC22[Private EC2 / AZ 2]
-    EC21 --> RDS[(Private Multi-AZ PostgreSQL)]
-    EC22 --> RDS
-    EC21 --> SM[Secrets Manager]
-    EC22 --> SM
-    GitHub[GitHub Actions / OIDC] --> Artifacts[Versioned release artifacts]
-    GitHub --> Amplify
-    Artifacts --> EC21
-    Artifacts --> EC22
-    EC21 --> CW[CloudWatch / alarms / SNS]
-    EC22 --> CW
-    RDS --> CW
-    ALB --> CW
+ Browser[Browser / HTTPS] --> Amplify[Amplify Hosting / React / default AWS domain]
+ Amplify -->|"/api/* HTTPS proxy"| API[API Gateway HTTP API / throttled]
+ API --> Alias[Lambda live alias / ARM64 / concurrency 2]
+ Alias --> DB[(DynamoDB / on-demand)]
+ Alias --> Secret[Secrets Manager / one administrator secret]
+ Alias --> Logs[CloudWatch / 7-day logs / basic alarms]
+ Logs --> SNS[SNS email alerts]
+ GitHub[GitHub Actions / OIDC] --> Alias
+ GitHub --> Amplify
+ Budget[AWS Budget / configurable monthly alert] --> Email[Alert email]
 ```
 
-The original custom-domain Route 53 → explicit CloudFront/S3 frontend and public HTTPS ALB are replaced by Amplify plus API Gateway and an internal ALB. This is a deliberate change requested by the owner, not a claim that all original infrastructure resources remain. Amplify's managed frontend storage/CDN are not separate S3/CloudFront resources in this stack. S3 is explicitly used for private backend artifacts and ALB access logs. HTTPS ends at API Gateway; VPC-link-to-ALB HTTP and ALB-to-EC2 HTTP stay inside security-group-restricted private networking. If end-to-end TLS inside the VPC or the original custom hostname is mandatory, add certificates and a domain in a separate change.
+There are **no EC2 instances, ASG, ALB, NAT gateways, VPC Link or RDS** in the new stack. Amplify manages frontend HTTPS/CDN/storage. DynamoDB has no database-server idle charge. Lambda has no provisioned concurrency. See [cost controls](docs/costs.md) for limitations: this is lower-cost, not a guarantee of free hosting.
 
-See [AWS deployment](docs/deployment.md), [security and operations](docs/operations.md), [failure testing](docs/failure-testing.md), [resource inventory](docs/inventory.md) and the editable [draw.io architecture](docs/architecture.drawio).
+DynamoDB stores employee items plus email-reservation items. Transactions make unique email checks atomic, including email changes/deletes. Revision conditions reject concurrent updates with HTTP 409 instead of silently losing a write. The directory scans all pages and sorts employees; this is intended for a small demo dataset, not a large enterprise directory.
 
-## Repository
+## Build and release
 
-- `frontend/`: React UI, Vite build and interaction tests.
-- `backend/`: Express REST API, migrations and real PostgreSQL integration tests.
-- `deployment/`: AWS CDK, cloud-init/systemd setup, deployment and smoke scripts.
-- `.github/workflows/ci.yml`: test/build/synthesize, then OIDC-based production release when configured.
+`npm run build:backend` bundles the Lambda and AWS SDK into `.local/lambda` and records its Git SHA in `VERSION`. CDK packages that directory. GitHub Actions runs tests/build/synthesis before deployment. When repository variables are configured, it updates Lambda code, publishes an immutable version, moves the `live` alias with an optimistic revision check, verifies health, then publishes React to Amplify. A failed backend health check restores the previous alias and leaves the job failed. Frontend failure leaves the healthy backend in place; revert/redeploy a known-good main commit to restore compatibility.
 
-## Release and rollback
+Infrastructure changes use a separate authorized operator identity and CDK. Application releases cannot read employee records or administrator secrets. See [deployment](docs/deployment.md), [operations](docs/operations.md), [failure testing](docs/failure-testing.md), [inventory](docs/inventory.md), [validation](docs/validation.md) and the editable [draw.io diagram](docs/architecture.drawio).
 
-Every backend release is an immutable Git-SHA zip. The deployment updates a non-secret SSM release pointer and starts an ASG refresh with at least two healthy instances retained. New instances retrieve their credentials with their own runtime IAM role. If backend health/version validation fails, the script restores the previous pointer and refreshes the fleet back. The frontend is published after the backend passes. If frontend deployment or its final smoke check fails, the job fails visibly; redeploy the last known-good commit to restore frontend compatibility. Schema migrations must remain compatible with both versions during rolling deployment.
+## Earlier architecture
 
-Blue/green target-group traffic shifting is an optional assignment bonus and is not implemented; this project uses rolling replacement with backend rollback.
-
-## Cost and cleanup
-
-This is a production-style paid topology: two NAT gateways, at least two EC2 instances, an internal ALB, Multi-AZ RDS, API Gateway, Amplify and monitoring. It is not a free-tier design. Review AWS Pricing Calculator for your region before deployment. No cloud resources are created by `npm run check` or `cdk synth`. RDS deletion protection, retained artifact/log buckets and snapshot policies require deliberate cleanup; see deployment documentation.
+The former PostgreSQL implementation remains in Git history (`3c5d6c4`). There is no automatic data migration from it. Existing ignored local PostgreSQL data is left untouched. If anyone deployed the older AWS stack separately, review its retained RDS/bucket resources: changing source or deploying this new template does not prove that old charges stop.

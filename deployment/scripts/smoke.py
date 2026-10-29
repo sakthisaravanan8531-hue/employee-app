@@ -4,6 +4,8 @@ import http.cookiejar
 import json
 import os
 import urllib.request
+import urllib.error
+import time
 import uuid
 
 def main():
@@ -11,8 +13,14 @@ def main():
     opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     def call(method,path,data=None):
         request=urllib.request.Request(base+path, data=json.dumps(data).encode() if data is not None else (b'{}' if method=='DELETE' else None), method=method, headers={'Content-Type':'application/json'})
-        with opener.open(request,timeout=30) as response:
-            return json.load(response) if response.status!=204 else None
+        for attempt in range(5):
+            try:
+                with opener.open(request,timeout=30) as response:
+                    return json.load(response) if response.status!=204 else None
+            except urllib.error.HTTPError as error:
+                if error.code!=429 or attempt==4:raise
+                time.sleep(1+attempt)
+        raise RuntimeError('API rate limit retries exhausted')
     call('POST','/api/login',{'username':os.environ.get('ADMIN_USERNAME','admin'),'password':os.environ['ADMIN_PASSWORD']})
     record={'name':'Deployment smoke test','email':f'smoke-{uuid.uuid4()}@example.test','department':'Validation','title':'Temporary record'}
     created=call('POST','/api/employees',record)

@@ -1,4 +1,3 @@
-import EmbeddedPostgres from "embedded-postgres";
 import { mkdir, access, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
@@ -15,35 +14,12 @@ try {
 } catch {
   await writeFile(
     ".env",
-    `DATABASE_URL=postgres://employee:local-db-only@127.0.0.1:5432/employee\nADMIN_USERNAME=admin\nADMIN_PASSWORD=${randomBytes(18).toString("hex")}\nSESSION_SECRET=${randomBytes(32).toString("hex")}\nPORT=8080\nNODE_ENV=development\n`,
+    `LOCAL_DB_PATH=../.local/employees.sqlite\nADMIN_USERNAME=admin\nADMIN_PASSWORD=${randomBytes(18).toString("hex")}\nSESSION_SECRET=${randomBytes(32).toString("hex")}\nPORT=8080\nNODE_ENV=development\n`,
     { mode: 0o600, flag: "wx" },
   );
 }
-const database = new EmbeddedPostgres({
-  databaseDir: path.join(root, ".local/postgres"),
-  port: 5432,
-  user: "employee",
-  password: "local-db-only",
-  authMethod: "scram-sha-256",
-  persistent: true,
-  onLog: () => {},
-  onError: (message) => console.error(message),
-});
-try {
-  await access(".local/postgres/PG_VERSION");
-} catch {
-  await database.initialise();
-}
-await database.start();
-const client = database.getPgClient("postgres");
-await client.connect();
-const result = await client.query(
-  "SELECT 1 FROM pg_database WHERE datname='employee'",
-);
-await client.end();
-if (!result.rowCount) await database.createDatabase("employee");
 console.log(
-  "Local PostgreSQL is running. Local administrator credentials are in the ignored .env file.",
+  "Local SQLite storage is ready. Administrator credentials are in the ignored .env file.",
 );
 const child = spawn("npm", ["run", "dev"], {
   stdio: "inherit",
@@ -72,7 +48,6 @@ async function stop(code = 0) {
       });
     });
   }
-  await database.stop();
   process.exit(code);
 }
 process.on("SIGINT", () => stop());

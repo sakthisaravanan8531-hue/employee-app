@@ -6,7 +6,7 @@
     "build": "tsc --noEmit",
     "synth": "cdk synth --quiet",
     "deploy": "cdk deploy --all",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx test/stack.test.ts"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.240.0",

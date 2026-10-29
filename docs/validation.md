@@ -1,22 +1,21 @@
 # Validation record
 
-Validated in the managed development environment on 2026-10-29:
+Validated in the managed development environment on 2026-10-29 for the approved low-cost architecture:
 
-| Check                                                                          | Result                                                |
-| ------------------------------------------------------------------------------ | ----------------------------------------------------- |
-| Backend integration/security tests against a real temporary PostgreSQL process | 14 passed                                             |
-| React interaction tests                                                        | 3 passed                                              |
-| CDK infrastructure assertions and generated bootstrap bash syntax              | 10 passed                                             |
-| Release-tool packaging, failure and rollback tests (mock AWS)                  | 6 passed                                              |
-| Production React build                                                         | Passed                                                |
-| Infrastructure TypeScript check                                                | Passed                                                |
-| Offline CloudFormation synthesis                                               | Passed                                                |
-| Live local HTTP smoke through Vite to Node/PostgreSQL                          | Passed: SPA, login, list, add, update, delete, logout |
-| Local startup with existing DB and credentials                                 | Passed                                                |
-| npm production-dependency advisory check                                       | 0 advisories reported                                 |
+| Check                                                                         | Result                                                |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------- |
+| API authentication/CRUD/security and local persistence tests                  | 15 passed                                             |
+| DynamoDB command/transaction behavior tests (mock SDK transport)              | 8 passed                                              |
+| React interaction tests                                                       | 3 passed                                              |
+| Built Lambda with API Gateway v2 events, cookies, JSON limits and CRUD        | 1 passed                                              |
+| CDK architecture, IAM and cost-control assertions                             | 10 passed                                             |
+| Lambda release packaging, alias revision checks and rollback tests (mock AWS) | 6 passed                                              |
+| Production React and bundled Lambda builds                                    | Passed                                                |
+| Infrastructure TypeScript check and offline CloudFormation synthesis          | Passed                                                |
+| Local HTTP smoke through Vite to Node/SQLite                                  | Passed: SPA, login, list, add, update, delete, logout |
 
-Run `npm run check` to reproduce the 33 automated tests plus build/synthesis. Run `node --env-file=.env deployment/scripts/local-smoke.mjs` while `npm run dev:local` is running to reproduce the HTTP smoke test. The release-tool tests mock AWS; they do not deploy resources.
+Run `npm run check` to reproduce the 43 automated tests, builds and synthesis. Run `node --env-file=.env deployment/scripts/local-smoke.mjs` while `npm run dev:local` is running to repeat the HTTP check. SQLite stores local records on disk; DynamoDB is used only in AWS. DynamoDB request tests and release tests mock the AWS transport, and must not be described as deployed-cloud validation. The bundled-handler test uses the local adapter while exercising the built Lambda's real HTTP-event/cookie transport.
 
-CDK warns that AZ names are pinned to this region/account topology and that an infrastructure deployment resets ASG desired capacity to two. Review instance capacity before stack updates; application-only releases do not deploy the stack. CDK also reports unset optional feature flags. These warnings did not fail synthesis.
+AWS creation, Amplify publication/proxy behavior, live DynamoDB transactions/IAM, GitHub-to-AWS authorization, actual SNS/budget email delivery and alias rollback in AWS are **not run**. No AWS identity is configured here. Account 912010732788 is the target, not evidence of access. CDK reports unset optional feature flags; synthesis succeeds.
 
-AWS creation, real Amplify publication/proxy behavior, AWS GitHub OIDC authorization, EC2 fault recovery, email delivery, external isolation probes and rollback in AWS are **not run**. No AWS identity was configured in this development environment. Account 912010732788 is a deployment target, not evidence of access. Follow the live acceptance runbook after connecting an authorized AWS identity.
+The earlier PostgreSQL/EC2 test record is superseded by this serverless validation. The original EC2-stop/RDS-isolation demonstrations do not apply to the owner-approved lower-cost architecture.

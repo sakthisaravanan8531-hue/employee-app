@@ -1,9 +1,8 @@
-import { loadConfig, migrate } from "./config.js";
+import { loadConfig } from "./config.js";
 import { createApp } from "./app.js";
-const { pool, auth } = await loadConfig();
-await migrate(pool);
+const { store, auth } = await loadConfig();
 const app = createApp({
-  pool,
+  store,
   auth,
   production: process.env.NODE_ENV === "production",
   version: process.env.APP_VERSION || "local",
@@ -14,7 +13,7 @@ const server = app.listen(Number(process.env.PORT || 8080), "0.0.0.0", () =>
 );
 async function stop() {
   server.close(async () => {
-    await pool.end();
+    await store.close();
     process.exit(0);
   });
   setTimeout(() => process.exit(1), 25000).unref();

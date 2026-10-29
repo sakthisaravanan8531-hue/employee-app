@@ -45,5 +45,5 @@ try {
 }
 await call("/api/logout", "POST", {});
 console.log(
-  "PASS: frontend SPA, proxied API, login, PostgreSQL CRUD and logout",
+  "PASS: frontend SPA, proxied API, login, persisted CRUD and logout",
 );

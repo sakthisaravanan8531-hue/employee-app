@@ -8,5 +8,5 @@ new EmployeeStack(app, "EmployeeApp", {
     region: app.node.tryGetContext("region") || "us-east-1",
   },
   description:
-    "Employee application: Amplify HTTPS hosting, private EC2/ALB, PostgreSQL, monitoring and GitHub OIDC",
+    "Employee application: Amplify HTTPS hosting, Lambda, DynamoDB, cost controls and GitHub OIDC",
 });

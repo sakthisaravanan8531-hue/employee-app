@@ -21,7 +21,7 @@ jobs:
     needs: verify
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.DEPLOYMENT_ROLE_ARN != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 30
     environment: production
     concurrency:
       group: employee-production
@@ -32,9 +32,7 @@ jobs:
     env:
       AWS_REGION: us-east-1
       AMPLIFY_APP_ID: ${{ vars.AMPLIFY_APP_ID }}
-      ARTIFACT_BUCKET: ${{ vars.ARTIFACT_BUCKET }}
-      RELEASE_PARAMETER: /employee-app/backend-release
-      ASG_NAME: ${{ vars.ASG_NAME }}
+      FUNCTION_NAME: ${{ vars.FUNCTION_NAME }}
       API_URL: ${{ vars.API_URL }}
       APP_URL: ${{ vars.APP_URL }}
       RELEASE_SHA: ${{ github.sha }}
@@ -47,9 +45,10 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.DEPLOYMENT_ROLE_ARN }}
-          role-duration-seconds: 7200
+          role-duration-seconds: 3600
           aws-region: ${{ env.AWS_REGION }}
       - run: npm ci --no-audit --no-fund
       - run: npm run build -w frontend
+      - run: npm run build:backend
       - name: Release backend and Amplify frontend
         run: python3 deployment/scripts/release.py

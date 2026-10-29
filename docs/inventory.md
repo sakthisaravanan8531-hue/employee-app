@@ -1,29 +1,26 @@
-# Expected AWS resource inventory
+# Expected low-cost resource inventory
 
-| Service         | Resources                                                                                                 |
-| --------------- | --------------------------------------------------------------------------------------------------------- |
-| Amplify         | 1 manual-deploy hosting app, main branch, AWS default HTTPS domain/CDN                                    |
-| API Gateway     | 1 HTTP API, default stage, VPC link, ALB integration                                                      |
-| VPC             | 1 VPC, 6 subnets in 2 AZs, Internet Gateway, routes, flow logs                                            |
-| NAT             | 2 NAT gateways and 2 Elastic IP addresses                                                                 |
-| ALB             | 1 internal load balancer, listener and healthy API target group                                           |
-| EC2 / ASG       | 1 launch template, 1 ASG, 2 desired instances (scale to 4)                                                |
-| RDS             | 1 PostgreSQL instance configured Multi-AZ (primary plus AWS-managed standby)                              |
-| Secrets Manager | DB credentials, administrator password, session key                                                       |
-| S3              | Private release artifacts, ALB access logs; CDK bootstrap asset storage separately                        |
-| IAM             | Runtime role, GitHub release role, monitoring/flow-log roles, GitHub OIDC provider if not already present |
-| SSM             | Release pointer and managed EC2 session support                                                           |
-| CloudWatch      | Dashboard, CPU/status/memory/API/target health/DB alarms, logs/metrics                                    |
-| SNS             | 1 alerts topic; email subscription when alertEmail is supplied                                            |
-| GitHub Actions  | Test/build/synthesize and OIDC application release                                                        |
+| Service         | Resources                                                                  |
+| --------------- | -------------------------------------------------------------------------- |
+| Amplify         | 1 static hosting app and main branch; managed default HTTPS domain/CDN     |
+| API Gateway     | 1 HTTP API, Lambda integration and throttled default stage                 |
+| Lambda          | 1 ARM64 Node.js function, published versions and live alias; concurrency 2 |
+| DynamoDB        | 1 encrypted on-demand table with read/write ceilings                       |
+| Secrets Manager | 1 generated administrator secret                                           |
+| IAM             | Runtime role, GitHub OIDC release role and provider (or reuse existing)    |
+| CloudWatch      | 7-day runtime/API logs, 1 log metric and 2 alarms; no dashboard            |
+| SNS             | Alerts topic; email subscription if alert email supplied                   |
+| AWS Budgets     | Account-wide monthly email budget if alert email supplied                  |
+| GitHub Actions  | Verification, Lambda version/alias release and Amplify publication         |
+| CDK bootstrap   | Asset storage and deployment roles, possibly shared                        |
 
-Route 53 and user-managed ACM/CloudFront/frontend S3 resources are replaced by Amplify-managed default-domain hosting, following the updated request. There is no registered custom domain in this version.
+There are no VPCs/subnets, NAT gateways, EC2 instances, ASGs, ALBs, RDS instances, VPC links, custom Route 53 zones or user-managed ACM certificates in the application stack. Amplify's managed hosting is not a separately declared frontend bucket/CloudFront distribution.
 
-After deployment, capture the actual stack inventory and outputs:
+After deployment, capture actual resources rather than treating this expected list as proof:
 
 ```sh
 aws cloudformation list-stack-resources --stack-name EmployeeApp --region us-east-1
 aws cloudformation describe-stacks --stack-name EmployeeApp --region us-east-1 --query 'Stacks[0].Outputs'
 ```
 
-Do not treat this expected inventory as proof that resources have been created.
+Resources from any earlier separately deployed EC2/RDS version must be inventoried and cleaned up deliberately; retained data may keep billing.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Immutable ASG release followed by Amplify manual hosting deployment.
+"""Versioned Lambda release followed by Amplify manual hosting deployment.
 Uses the AWS CLI credential chain (OIDC in GitHub Actions). Never logs signed URLs.
 """
 import json
@@ -23,24 +23,6 @@ def env(name):
     if not value:
         raise RuntimeError(f'Missing deployment variable: {name}')
     return value
-
-def wait_refresh(group, refresh_id):
-    deadline = time.monotonic() + 2400
-    while time.monotonic() < deadline:
-        refresh = aws('autoscaling', 'describe-instance-refreshes', '--auto-scaling-group-name', group, '--instance-refresh-ids', refresh_id)['InstanceRefreshes'][0]
-        status = refresh['Status']
-        print(f'Instance refresh: {status}, {refresh.get("PercentageComplete", 0)}%', flush=True)
-        if status == 'Successful':
-            return
-        if status in ('Failed', 'Cancelled', 'RollbackFailed', 'RollbackSuccessful'):
-            raise RuntimeError(f'Instance refresh ended: {status}: {refresh.get("StatusReason", "")}')
-        time.sleep(20)
-    raise TimeoutError('Instance refresh exceeded 40 minutes')
-
-def refresh(group):
-    result = aws('autoscaling', 'start-instance-refresh', '--auto-scaling-group-name', group,
-                 '--preferences', json.dumps({'MinHealthyPercentage': 100, 'MaxHealthyPercentage': 150, 'InstanceWarmup': 180, 'SkipMatching': False}))
-    wait_refresh(group, result['InstanceRefreshId'])
 
 def health(url, version=None):
     deadline = time.monotonic() + 180
@@ -84,45 +66,34 @@ def main():
     sha = env('RELEASE_SHA')
     if not re.fullmatch(r'[0-9a-f]{40}', sha):
         raise RuntimeError('RELEASE_SHA must be a full Git commit SHA')
-    bucket, group, parameter = env('ARTIFACT_BUCKET'), env('ASG_NAME'), env('RELEASE_PARAMETER')
+    function = env('FUNCTION_NAME')
     api_url, app_url, app_id = env('API_URL'), env('APP_URL'), env('AMPLIFY_APP_ID')
-    previous = aws('ssm', 'get-parameter', '--name', parameter)['Parameter']['Value']
-    active = aws('autoscaling', 'describe-instance-refreshes', '--auto-scaling-group-name', group)['InstanceRefreshes']
-    if any(r['Status'] in ('Pending','InProgress','Cancelling','Baking','RollbackInProgress') for r in active):
-        raise RuntimeError('Another instance refresh is active; finish or cancel it before deployment')
     dist = ROOT / 'frontend/dist'
+    backend = ROOT / '.local/lambda'
     if not (dist / 'index.html').is_file():
         raise RuntimeError('Build the frontend before deployment')
+    if not (backend / 'index.js').is_file() or (backend / 'VERSION').read_text().strip() != sha:
+        raise RuntimeError('Build the backend for RELEASE_SHA before deployment')
+    previous = aws('lambda', 'get-alias', '--function-name', function, '--name', 'live')
+    # Guard alias movement with RevisionId. Never overwrite a concurrent rollout.
     with tempfile.TemporaryDirectory() as temp:
         bundle = Path(temp) / 'backend.zip'
         with zipfile.ZipFile(bundle, 'w', zipfile.ZIP_DEFLATED) as archive:
-            for name in ['package.json', 'package-lock.json']:
-                archive.write(ROOT / 'backend' / name, name)
-            for file in (ROOT / 'backend/src').rglob('*.js'):
-                archive.write(file, file.relative_to(ROOT / 'backend'))
-            archive.writestr('VERSION', sha + '\n')
-        key = f'backend/{sha}.zip'
-        aws('s3api', 'put-object', '--bucket', bucket, '--key', key, '--body', str(bundle), '--server-side-encryption', 'AES256')
-    aws('ssm', 'put-parameter', '--name', parameter, '--type', 'String', '--value', f'{bucket}/{key}', '--overwrite')
+            for name in ['index.js', 'VERSION']:
+                archive.write(backend / name, name)
+        aws('lambda', 'update-function-code', '--function-name', function, '--zip-file', 'fileb://' + str(bundle))
+    aws('lambda', 'wait', 'function-updated-v2', '--function-name', function)
+    published = aws('lambda', 'publish-version', '--function-name', function, '--description', sha)
+    updated = aws('lambda', 'update-alias', '--function-name', function, '--name', 'live', '--function-version', published['Version'], '--revision-id', previous['RevisionId'])
     try:
-        refresh(group)
         health(api_url, sha)
     except Exception:
-        print('Backend release failed. Restoring previous release pointer.', flush=True)
-        aws('ssm', 'put-parameter', '--name', parameter, '--type', 'String', '--value', previous, '--overwrite')
-        current = aws('autoscaling', 'describe-instance-refreshes', '--auto-scaling-group-name', group)['InstanceRefreshes']
-        if any(r['Status'] in ('Pending','InProgress','Baking') for r in current):
-            aws('autoscaling', 'cancel-instance-refresh', '--auto-scaling-group-name', group)
-            for _ in range(30):
-                current = aws('autoscaling', 'describe-instance-refreshes', '--auto-scaling-group-name', group)['InstanceRefreshes']
-                if not any(r['Status'] in ('Pending','InProgress','Cancelling','Baking') for r in current):
-                    break
-                time.sleep(10)
-        refresh(group)
+        print('Health failed; restoring previous Lambda alias.', flush=True)
+        aws('lambda', 'update-alias', '--function-name', function, '--name', 'live', '--function-version', previous['FunctionVersion'], '--revision-id', updated['RevisionId'])
         health(api_url)
         raise
     # Frontend failures leave the verified backend in place; redeploy a known-good
-    # commit to restore frontend compatibility. Schema changes must be additive.
+    # commit to restore frontend compatibility. Data changes must remain backward-compatible.
     deploy_frontend(app_id, dist)
     health(app_url, sha)
     with urllib.request.urlopen(app_url, timeout=30) as response:

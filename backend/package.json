@@ -14,12 +14,14 @@
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.1000.0",
     "express": "^5.1.0",
-    "pg": "^8.16.3",
     "helmet": "^8.1.0",
     "cookie-parser": "^1.4.7",
     "jsonwebtoken": "^9.0.2",
     "express-rate-limit": "^8.1.0",
-    "zod": "^4.1.12"
+    "zod": "^4.1.12",
+    "@aws-sdk/client-dynamodb": "^3.1000.0",
+    "@aws-sdk/lib-dynamodb": "^3.1000.0",
+    "serverless-http": "^3.2.0"
   },
   "devDependencies": {
     "supertest": "^7.1.4"

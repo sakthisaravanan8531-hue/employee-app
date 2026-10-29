@@ -1,84 +1,73 @@
-import { execFileSync } from "node:child_process";
-import { bootstrap } from "../lib/user-data";
 import { test } from "node:test";
+import assert from "node:assert/strict";
 import { App } from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
 import { EmployeeStack } from "../lib/employee-stack";
-const app = new App({
-  context: { githubRepository: "sakthisaravanan8531-hue/employee-app" },
-});
+const app = new App({ context: { alertEmail: "alerts@example.test" } });
 const template = Template.fromStack(
   new EmployeeStack(app, "TestEmployee", {
     env: { account: "912010732788", region: "us-east-1" },
   }),
 );
-test("network spans two AZs with six exact subnets and two NAT gateways", () => {
-  template.resourceCountIs("AWS::EC2::Subnet", 6);
-  template.resourceCountIs("AWS::EC2::NatGateway", 2);
-  for (const cidr of [
-    "10.0.1.0/24",
-    "10.0.2.0/24",
-    "10.0.11.0/24",
-    "10.0.12.0/24",
-    "10.0.21.0/24",
-    "10.0.22.0/24",
+test("no always-running infrastructure or paid dashboards is created", () => {
+  for (const type of [
+    "AWS::EC2::VPC",
+    "AWS::EC2::Instance",
+    "AWS::EC2::NatGateway",
+    "AWS::RDS::DBInstance",
+    "AWS::ElasticLoadBalancingV2::LoadBalancer",
+    "AWS::AutoScaling::AutoScalingGroup",
+    "AWS::CloudWatch::Dashboard",
   ])
-    template.hasResourceProperties("AWS::EC2::Subnet", { CidrBlock: cidr });
+    template.resourceCountIs(type, 0);
 });
-test("database is encrypted, private, multi-AZ and protected with backups", () => {
-  template.hasResourceProperties("AWS::RDS::DBInstance", {
-    MultiAZ: true,
-    PubliclyAccessible: false,
-    StorageEncrypted: true,
-    BackupRetentionPeriod: 7,
-    DeletionProtection: true,
-    MasterUserPassword: Match.anyValue(),
+test("DynamoDB is on-demand, retained, protected and capacity limited", () => {
+  template.hasResourceProperties("AWS::DynamoDB::Table", {
+    BillingMode: "PAY_PER_REQUEST",
+    DeletionProtectionEnabled: true,
+    OnDemandThroughput: { MaxReadRequestUnits: 10, MaxWriteRequestUnits: 10 },
+  });
+  template.hasResource("AWS::DynamoDB::Table", { DeletionPolicy: "Retain" });
+});
+test("Lambda is ARM, small, concurrency limited and outside a VPC", () => {
+  template.hasResourceProperties("AWS::Lambda::Function", {
+    Runtime: "nodejs22.x",
+    Architectures: ["arm64"],
+    MemorySize: 256,
+    Timeout: 15,
+    ReservedConcurrentExecutions: 2,
+    VpcConfig: Match.absent(),
   });
 });
-test("instances require IMDSv2, encrypted disks and no public IP", () => {
-  template.hasResourceProperties("AWS::EC2::LaunchTemplate", {
-    LaunchTemplateData: Match.objectLike({
-      MetadataOptions: { HttpTokens: "required" },
-      NetworkInterfaces: Match.arrayWith([
-        Match.objectLike({ AssociatePublicIpAddress: false }),
-      ]),
-      BlockDeviceMappings: Match.arrayWith([
-        Match.objectLike({ Ebs: Match.objectLike({ Encrypted: true }) }),
-      ]),
-    }),
+test("live alias is used for safe versioned releases", () => {
+  template.hasResourceProperties("AWS::Lambda::Alias", { Name: "live" });
+  template.hasResourceProperties("AWS::ApiGatewayV2::Integration", {
+    IntegrationType: "AWS_PROXY",
+    PayloadFormatVersion: "2.0",
   });
 });
-test("fleet maintains two instances behind a private ALB", () => {
-  template.hasResourceProperties("AWS::AutoScaling::AutoScalingGroup", {
-    MinSize: "2",
-    DesiredCapacity: "2",
-  });
-  template.hasResourceProperties("AWS::ElasticLoadBalancingV2::LoadBalancer", {
-    Scheme: "internal",
-  });
-});
-test("database ingress is restricted to a security group", () => {
-  template.hasResourceProperties("AWS::EC2::SecurityGroupIngress", {
-    FromPort: 5432,
-    ToPort: 5432,
-    IpProtocol: "tcp",
-    SourceSecurityGroupId: Match.anyValue(),
-    CidrIp: Match.absent(),
+test("API is throttled and detailed metrics are disabled", () => {
+  template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
+    DefaultRouteSettings: {
+      ThrottlingBurstLimit: 5,
+      ThrottlingRateLimit: 2,
+      DetailedMetricsEnabled: false,
+    },
   });
 });
-test("Amplify routes API requests over HTTPS and has a main branch", () => {
+test("one generated secret and short-retention logs reduce fixed costs", () => {
+  template.resourceCountIs("AWS::SecretsManager::Secret", 1);
+  template.hasResourceProperties("AWS::Logs::LogGroup", { RetentionInDays: 7 });
+});
+test("Amplify provides hosting with HTTPS API proxy", () => {
   template.hasResourceProperties("AWS::Amplify::App", {
     Platform: "WEB",
     CustomRules: Match.arrayWith([
       Match.objectLike({ Source: "/api/<*>", Status: "200" }),
     ]),
   });
-  template.hasResourceProperties("AWS::Amplify::Branch", {
-    BranchName: "main",
-    EnableAutoBuild: false,
-  });
 });
-test("GitHub role uses production environment and OIDC audience", () => {
+test("GitHub deploy role trusts only the production environment", () => {
   template.hasResourceProperties("AWS::IAM::Role", {
     AssumeRolePolicyDocument: Match.objectLike({
       Statement: Match.arrayWith([
@@ -96,47 +85,37 @@ test("GitHub role uses production environment and OIDC audience", () => {
     }),
   });
 });
-test("alarms notify SNS and dashboard is provisioned", () => {
-  template.resourceCountIs("AWS::CloudWatch::Dashboard", 1);
-  template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-    Threshold: 10,
-    AlarmActions: Match.anyValue(),
-    EvaluationPeriods: 2,
-  });
-});
-
-test("no security group exposes backend or database ports to the internet", () => {
-  const resources = template.toJSON().Resources;
-  for (const resource of Object.values(resources) as any[]) {
-    const rules =
-      resource.Type === "AWS::EC2::SecurityGroupIngress"
-        ? [resource.Properties]
-        : resource.Properties?.SecurityGroupIngress || [];
-    for (const rule of rules) {
-      if (rule.CidrIp === "0.0.0.0/0" || rule.CidrIpv6 === "::/0") {
-        if (
-          rule.IpProtocol === "-1" ||
-          [5432, 8080, 22].some(
-            (port) =>
-              Number(rule.FromPort) <= port && Number(rule.ToPort) >= port,
-          )
-        )
-          throw new Error("Unexpected internet ingress to a private service");
-      }
-    }
-  }
-});
-
-test("generated instance bootstrap is valid bash", () => {
-  execFileSync("bash", ["-n"], {
-    input: bootstrap({
-      releaseParameter: "/employee/release",
-      dbSecret: "arn:db-secret",
-      dbHost: "db.internal",
-      adminSecret: "arn:admin-secret",
-      sessionSecret: "arn:session-secret",
-      logGroup: "employee/logs",
-      region: "us-east-1",
+test("monthly budget notifies email without automated paid actions", () => {
+  template.hasResourceProperties("AWS::Budgets::Budget", {
+    Budget: Match.objectLike({
+      BudgetLimit: { Amount: 5, Unit: "USD" },
+      BudgetType: "COST",
+      TimeUnit: "MONTHLY",
     }),
+    NotificationsWithSubscribers: Match.arrayWith([
+      Match.objectLike({
+        Subscribers: [
+          { SubscriptionType: "EMAIL", Address: "alerts@example.test" },
+        ],
+      }),
+    ]),
   });
+});
+test("release role cannot read application secrets or employee records", () => {
+  const resources = template.toJSON().Resources;
+  const policy = Object.values(resources).find(
+    (r: any) =>
+      r.Type === "AWS::IAM::Policy" &&
+      JSON.stringify(r.Properties.Roles).includes("DeploymentRole"),
+  ) as any;
+  assert.ok(policy);
+  const actions = policy.Properties.PolicyDocument.Statement.flatMap(
+    (s: any) => s.Action,
+  );
+  assert.ok(
+    !actions.some(
+      (a: string) =>
+        a.startsWith("secretsmanager:") || a.startsWith("dynamodb:"),
+    ),
+  );
 });

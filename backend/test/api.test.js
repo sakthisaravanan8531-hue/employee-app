@@ -2,13 +2,11 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import net from "node:net";
-import pg from "pg";
-import EmbeddedPostgres from "embedded-postgres";
+import { LocalStore } from "../src/local-store.js";
 import request from "supertest";
 import { createApp } from "../src/app.js";
-import { migrate, loadConfig } from "../src/config.js";
-let database, directory, pool, app, agent;
+import { loadConfig } from "../src/config.js";
+let directory, store, app, agent;
 const auth = {
   username: "admin",
   password: "a-test-password-only",
@@ -22,36 +20,8 @@ const record = {
 };
 before(async () => {
   directory = await mkdtemp(`${tmpdir()}/employee-test-`);
-  const port = await new Promise((resolve) => {
-    const server = net.createServer();
-    server.listen(0, "127.0.0.1", () => {
-      const port = server.address().port;
-      server.close(() => resolve(port));
-    });
-  });
-  database = new EmbeddedPostgres({
-    databaseDir: directory,
-    port,
-    user: "postgres",
-    password: "local-test-only",
-    authMethod: "scram-sha-256",
-    persistent: false,
-    onLog: () => {},
-    onError: () => {},
-  });
-  await database.initialise();
-  await database.start();
-  await database.createDatabase("employee");
-  pool = new pg.Pool({
-    host: "127.0.0.1",
-    port,
-    user: "postgres",
-    password: "local-test-only",
-    database: "employee",
-  });
-  await migrate(pool);
-  await migrate(pool);
-  app = createApp({ pool, auth, version: "test-build" });
+  store = new LocalStore(`${directory}/employees.sqlite`);
+  app = createApp({ store, auth, version: "test-build" });
   agent = request.agent(app);
   await agent
     .post("/api/login")
@@ -59,11 +29,10 @@ before(async () => {
     .expect(200);
 });
 after(async () => {
-  await pool?.end();
-  await database?.stop();
+  await store?.close();
   if (directory) await rm(directory, { recursive: true, force: true });
 });
-test("health checks the real PostgreSQL connection and reports build version", async () => {
+test("health checks the local persistence adapter and reports build version", async () => {
   const res = await request(app).get("/api/health").expect(200);
   assert.deepEqual(res.body, { status: "ok", version: "test-build" });
   assert.equal(res.headers["cache-control"], "no-store, private");
@@ -87,7 +56,7 @@ test("session cookie is HttpOnly and SameSite strict", async () => {
   assert.match(res.headers["set-cookie"][0], /SameSite=Strict/);
 });
 test("production cookies require HTTPS", async () => {
-  const secure = createApp({ pool, auth, production: true });
+  const secure = createApp({ store, auth, production: true });
   const res = await request(secure)
     .post("/api/login")
     .send({ username: auth.username, password: auth.password })
@@ -111,11 +80,7 @@ test("CRUD persists records, rejects duplicates and handles missing records", as
   const id = created.body.id;
   assert.equal(created.body.name, record.name);
   assert.ok(created.body.created_at);
-  assert.equal(
-    (await pool.query("SELECT count(*) FROM employees WHERE id=$1", [id]))
-      .rows[0].count,
-    "1",
-  );
+  assert.equal((await store.get(id)).id, id);
   await agent.post("/api/employees").send(record).expect(409);
   const list = await agent.get("/api/employees").expect(200);
   assert.equal(list.body.length, 1);
@@ -124,19 +89,12 @@ test("CRUD persists records, rejects duplicates and handles missing records", as
     .send({ ...record, title: "Senior Engineer" })
     .expect(200);
   assert.equal(edited.body.title, "Senior Engineer");
-  assert.equal(
-    (await pool.query("SELECT title FROM employees WHERE id=$1", [id])).rows[0]
-      .title,
-    "Senior Engineer",
-  );
+  assert.equal((await store.get(id)).title, "Senior Engineer");
   await agent
     .delete(`/api/employees/${id}`)
     .set("Content-Type", "application/json")
     .expect(204);
-  assert.equal(
-    (await pool.query("SELECT count(*) FROM employees")).rows[0].count,
-    "0",
-  );
+  assert.equal((await store.list()).length, 0);
   await agent.put(`/api/employees/${id}`).send(record).expect(404);
   await agent
     .delete(`/api/employees/${id}`)
@@ -163,11 +121,7 @@ test("SQL-like input is stored as data and does not damage the table", async () 
       email: "sql@example.test",
     })
     .expect(201);
-  assert.equal(
-    (await pool.query("SELECT name FROM employees WHERE id=$1", [res.body.id]))
-      .rows[0].name,
-    res.body.name,
-  );
+  assert.equal((await store.get(res.body.id)).name, res.body.name);
   await agent
     .delete(`/api/employees/${res.body.id}`)
     .set("Content-Type", "application/json")
@@ -175,8 +129,8 @@ test("SQL-like input is stored as data and does not damage the table", async () 
 });
 test("database outage returns unavailable health without leaking details", async () => {
   const failed = createApp({
-    pool: {
-      query: async () => {
+    store: {
+      health: async () => {
         throw new Error("secret connection details");
       },
     },
@@ -189,7 +143,7 @@ test("fault injection is disabled by default", async () => {
   await agent.post("/api/ops/fault").send({}).expect(404);
 });
 test("explicitly enabled monitoring fault requires both login and token", async () => {
-  const drill = createApp({ pool, auth, faultToken: "authorized-drill" }),
+  const drill = createApp({ store, auth, faultToken: "authorized-drill" }),
     a = request.agent(drill);
   await a
     .post("/api/login")
@@ -210,5 +164,15 @@ test("logout clears the cookie and prevents subsequent access", async () => {
   await a.get("/api/employees").expect(401);
 });
 test("startup fails closed without database/auth configuration", async () => {
-  await assert.rejects(() => loadConfig({}), /configuration are required/);
+  await assert.rejects(() => loadConfig({}), /configuration is required/);
+});
+
+test("local records persist across adapter restart", async () => {
+  const filename = `${directory}/restart.sqlite`;
+  let db = new LocalStore(filename);
+  const item = await db.create({ ...record, email: "persist@example.test" });
+  await db.close();
+  db = new LocalStore(filename);
+  assert.equal((await db.get(item.id)).name, record.name);
+  await db.close();
 });
