@@ -71,6 +71,10 @@ class ReleaseTests(unittest.TestCase):
         with patch.dict(os.environ,{'RELEASE_SHA':'main; something'}),patch.object(release,'aws') as aws:
             with self.assertRaisesRegex(RuntimeError,'full Git commit SHA'):release.main()
             aws.assert_not_called()
+    def test_paused_application_skips_automatic_release(self):
+        with patch.object(release,'aws',return_value={'ReservedConcurrentExecutions':0}) as aws,patch.object(release,'deploy_frontend') as frontend:
+            release.main()
+        aws.assert_called_once();self.assertEqual(aws.call_args.args[1],'get-function-concurrency');frontend.assert_not_called()
     def test_failed_publish_never_moves_live_alias(self):
         def failure(*args):
             if args[:2]==('lambda','publish-version'):raise RuntimeError('publish failed')

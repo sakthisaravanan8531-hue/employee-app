@@ -66,6 +66,10 @@ DynamoDB stores employee items plus email-reservation items. Transactions make u
 
 Infrastructure changes use a separate authorized operator identity and CDK. Application releases cannot read employee records or administrator secrets. See [deployment](docs/deployment.md), [operations](docs/operations.md), [failure testing](docs/failure-testing.md), [inventory](docs/inventory.md), [validation](docs/validation.md) and the editable [draw.io diagram](docs/architecture.drawio).
 
+## Turn the app ON or OFF
+
+Open GitHub **Actions → Application ON or OFF → Run workflow** on main, then select `on`, `off` or `status`. OFF blocks backend invocations and publishes an offline page without deleting employees. ON verifies and redeploys the app. Automatic code releases respect the OFF state. Remaining storage/hosting/monitoring charges still apply. See [the switch instructions](docs/application-power.md).
+
 ## Earlier architecture
 
 The former PostgreSQL implementation remains in Git history (`3c5d6c4`). There is no automatic data migration from it. Existing ignored local PostgreSQL data is left untouched. If anyone deployed the older AWS stack separately, review its retained RDS/bucket resources: changing source or deploying this new template does not prove that old charges stop.

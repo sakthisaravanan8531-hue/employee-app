@@ -165,6 +165,8 @@ export class EmployeeStack extends cdk.Stack {
         actions: [
           "lambda:GetFunction",
           "lambda:GetFunctionConfiguration",
+          "lambda:GetFunctionConcurrency",
+          "lambda:PutFunctionConcurrency",
           "lambda:UpdateFunctionCode",
           "lambda:PublishVersion",
         ],

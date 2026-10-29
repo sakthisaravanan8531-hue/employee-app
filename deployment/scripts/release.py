@@ -74,6 +74,9 @@ def main():
         raise RuntimeError('Build the frontend before deployment')
     if not (backend / 'index.js').is_file() or (backend / 'VERSION').read_text().strip() != sha:
         raise RuntimeError('Build the backend for RELEASE_SHA before deployment')
+    if aws('lambda','get-function-concurrency','--function-name',function).get('ReservedConcurrentExecutions') == 0:
+        print('Application is OFF; automatic deployment skipped. Use Application ON or OFF to resume.')
+        return
     previous = aws('lambda', 'get-alias', '--function-name', function, '--name', 'live')
     # Guard alias movement with RevisionId. Never overwrite a concurrent rollout.
     with tempfile.TemporaryDirectory() as temp:

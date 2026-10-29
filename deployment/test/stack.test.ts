@@ -119,3 +119,17 @@ test("release role cannot read application secrets or employee records", () => {
     ),
   );
 });
+
+test("release role can pause only the application Lambda", () => {
+  const resources = template.toJSON().Resources;
+  const policy = Object.values(resources).find(
+    (r: any) =>
+      r.Type === "AWS::IAM::Policy" &&
+      JSON.stringify(r.Properties.Roles).includes("DeploymentRole"),
+  ) as any;
+  const statement = policy.Properties.PolicyDocument.Statement.find((s: any) =>
+    s.Action.includes("lambda:PutFunctionConcurrency"),
+  );
+  assert.ok(statement);
+  assert.notEqual(statement.Resource, "*");
+});

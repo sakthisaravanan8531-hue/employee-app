@@ -20,7 +20,9 @@ A default Amplify domain avoids domain-registration and Route 53 hosted-zone cha
 
 ## Pause or remove the demo
 
-For an immediate backend pause, an operator can set Lambda reserved concurrency to zero; API requests then fail, and frontend transfer/storage or other retained resources may still bill. Restore it to two to resume. Disconnect the frontend's public access or delete the Amplify app to stop serving frontend traffic. Verify the billing impact rather than assuming a backend pause makes all services free.
+Use **GitHub Actions → Application ON or OFF → Run workflow** to choose `off`, `on` or `status`. OFF sets Lambda concurrency to zero and publishes a small maintenance page; ON tests/builds/releases the app and restores concurrency to two. Push-triggered releases skip publication while OFF. See [application-power.md](application-power.md) for prerequisites, failure handling and CLI alternatives.
+
+This prevents new backend invocations but does not delete or fully stop hosting/storage resources. At zero traffic, Lambda already has no idle execution cost. Maintenance-page transfer, DynamoDB storage, Secrets Manager, CloudWatch and direct API Gateway requests can still bill. Verify actual billing rather than treating OFF as a zero-cost guarantee.
 
 Before teardown, export any employee data you need. DynamoDB is retained and deletion-protected, so it continues storage billing until explicitly removed. The administrator secret, published versions and CDK bootstrap storage also need review. Remove resources only after confirming data retention requirements. No cleanup command should blindly delete a shared CDK bootstrap bucket or OIDC provider.
 

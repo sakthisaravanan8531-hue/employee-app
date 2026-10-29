@@ -1,0 +1,53 @@
+name: Application ON or OFF
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Choose whether to enable, pause, or inspect the application
+        type: choice
+        required: true
+        default: status
+        options:
+          - status
+          - "off"
+          - "on"
+permissions:
+  contents: read
+jobs:
+  power:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    concurrency:
+      group: employee-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      POWER_ACTION: ${{ inputs.action }}
+      AWS_REGION: us-east-1
+      FUNCTION_NAME: ${{ vars.FUNCTION_NAME }}
+      AMPLIFY_APP_ID: ${{ vars.AMPLIFY_APP_ID }}
+      APP_URL: ${{ vars.APP_URL }}
+      API_URL: ${{ vars.API_URL }}
+      RELEASE_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        if: inputs.action == 'on'
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Build and verify before enabling
+        if: inputs.action == 'on'
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.DEPLOYMENT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Apply selected application state
+        run: python3 deployment/scripts/power.py "$POWER_ACTION"

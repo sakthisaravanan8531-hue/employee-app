@@ -53,6 +53,10 @@ Remove the old ASG/artifact-bucket variables if present; they are unused by this
 
 Do not enable a competing Amplify Git build pipeline on the same branch. AppUrl becomes functional after frontend publication succeeds, not merely because CloudFormation emitted the URL.
 
+## Manual ON/OFF control
+
+After deployment and GitHub variable setup, use **Actions → Application ON or OFF → Run workflow** on main. Choose `off` to block new backend invocations and publish an offline page; `on` to verify/build/deploy and resume; `status` to read backend concurrency. Both workflows share the production concurrency lock, and push-triggered releases skip AWS publication while paused. If updating an older installed stack, deploy the new scoped Lambda concurrency permissions first. See application-power.md for costs and failure handling.
+
 ## Sign in and verify
 
 Retrieve the generated AdminSecretArn secret in the AWS console securely. It contains username `admin` and a random password. Do not print it in CI. Open AppUrl and verify login, employee create/edit/list/delete and reload persistence. `/api/health` should report `status: ok` and the current Git SHA.
