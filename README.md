@@ -46,7 +46,7 @@ Mutations use JSON with `name`, `email`, `department` and `title`. Fields and UU
 flowchart TD
  Browser[Browser / HTTPS] --> Amplify[Amplify Hosting / React / default AWS domain]
  Amplify -->|"/api/* HTTPS proxy"| API[API Gateway HTTP API / throttled]
- API --> Alias[Lambda live alias / ARM64 / concurrency 2]
+ API --> Alias[Lambda live alias / ARM64 / shared concurrency pool]
  Alias --> DB[(DynamoDB / on-demand)]
  Alias --> Secret[Secrets Manager / one administrator secret]
  Alias --> Logs[CloudWatch / 7-day logs / basic alarms]

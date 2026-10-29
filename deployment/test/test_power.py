@@ -11,13 +11,15 @@ spec.loader.exec_module(power)
 class PowerTests(unittest.TestCase):
     def setUp(self):
         self.env=patch.dict(os.environ,{'FUNCTION_NAME':'app','AMPLIFY_APP_ID':'frontend','APP_URL':'https://app.example.test','API_URL':'https://api.example.test','RELEASE_SHA':'a'*40})
-        self.env.start();self.capacity=2;self.commands=[]
+        self.env.start();self.capacity=None;self.commands=[]
     def tearDown(self):self.env.stop()
     def aws(self,*args):
         self.commands.append(args)
         if args[:2]==('lambda','put-function-concurrency'):
             self.capacity=int(args[-1]);return {}
-        return {'ReservedConcurrentExecutions':self.capacity}
+        if args[:2]==('lambda','delete-function-concurrency'):
+            self.capacity=None;return {}
+        return {} if self.capacity is None else {'ReservedConcurrentExecutions':self.capacity}
     def test_off_blocks_backend_before_publishing_maintenance(self):
         def publish(*args):self.assertEqual(self.capacity,0)
         with patch.object(power.release,'aws',side_effect=self.aws),patch.object(power.release,'deploy_frontend',side_effect=publish) as deploy,patch.object(power,'wait_offline') as wait:
@@ -31,7 +33,7 @@ class PowerTests(unittest.TestCase):
         self.capacity=0
         with patch.object(power.release,'aws',side_effect=self.aws),patch.object(power.release,'main') as deploy:
             power.main('on')
-        self.assertEqual(self.capacity,2);deploy.assert_called_once()
+        self.assertIsNone(self.capacity);deploy.assert_called_once()
     def test_failed_resume_returns_to_off(self):
         with patch.object(power.release,'aws',side_effect=self.aws),patch.object(power.release,'main',side_effect=RuntimeError('health failed')):
             with self.assertRaisesRegex(RuntimeError,'health failed'):power.main('on')
@@ -46,4 +48,19 @@ class PowerTests(unittest.TestCase):
     def test_unconfirmed_capacity_change_stops_before_publication(self):
         with patch.object(power.release,'aws',return_value={'ReservedConcurrentExecutions':2}),patch.object(power.release,'deploy_frontend') as deploy:
             with self.assertRaisesRegex(RuntimeError,'not confirmed'):power.main('off')
+        deploy.assert_not_called()
+
+    def test_low_quota_account_resume_never_reserves_positive_capacity(self):
+        def low_quota(*args):
+            if args[:2]==('lambda','put-function-concurrency') and int(args[-1])>0:
+                raise RuntimeError('UnreservedConcurrentExecution below minimum')
+            return self.aws(*args)
+        self.capacity=0
+        with patch.object(power.release,'aws',side_effect=low_quota),patch.object(power.release,'main'):
+            power.main('on')
+        self.assertIsNone(self.capacity)
+        self.assertTrue(any(c[1]=='delete-function-concurrency' for c in self.commands))
+    def test_resume_does_not_publish_if_off_setting_remains(self):
+        with patch.object(power.release,'aws',return_value={'ReservedConcurrentExecutions':0}),patch.object(power.release,'main') as deploy:
+            with self.assertRaisesRegex(RuntimeError,'not confirmed'):power.main('on')
         deploy.assert_not_called()

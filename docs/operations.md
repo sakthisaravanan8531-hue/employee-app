@@ -18,7 +18,7 @@ The runtime role can access the specific DynamoDB table, administrator secret an
 
 ## Availability, releases and monitoring
 
-Lambda scales within its concurrency ceiling; DynamoDB provides managed regional availability. There are no EC2 stop tests or ASG recovery expectations anymore. Reserved concurrency limits load and costs but can produce 429 responses during bursts. API Gateway rate limiting is best-effort, and traffic over these limits must be retried or rejected.
+Lambda scales within the account shared concurrency pool; DynamoDB provides managed regional availability. There are no EC2 stop tests or ASG recovery expectations anymore. No positive concurrency reservation is required, which supports accounts with small regional quotas. OFF reserves zero to block new execution; ON removes that reservation. Account quotas and API throttling can produce 429 responses during bursts; there is no dedicated per-function concurrency ceiling while ON. API Gateway rate limiting is best-effort, and traffic over these limits must be retried or rejected.
 
 GitHub releases publish a version and move a live alias after recording the prior revision. Backend health failure attempts to restore the old version with an optimistic RevisionId check. Frontend publication follows backend validation. There is no weighted canary or blue/green fleet; prior versions remain available for alias rollback. Review old published-version storage as part of cleanup.
 

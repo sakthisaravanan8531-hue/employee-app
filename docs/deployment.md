@@ -33,7 +33,17 @@ If the account already has the GitHub OIDC provider, reuse it by adding this con
 -c githubOidcProviderArn=arn:aws:iam::912010732788:oidc-provider/token.actions.githubusercontent.com
 ```
 
-`npm run build:backend` must run before CDK synthesis/deploy because the stack packages `.local/lambda`. `npm run check` includes that build. CDK creates the initial Lambda version and live alias. Infrastructure creation incurs charges and can fail due to quotas or permissions even after offline synthesis passes. Some new AWS accounts have very low Lambda concurrency quotas; if two reserved executions cannot be allocated, review the regional quota before deployment.
+`npm run build:backend` must run before CDK synthesis/deploy because the stack packages `.local/lambda`. `npm run check` includes that build. CDK creates the initial Lambda version and live alias. Infrastructure creation incurs charges and can fail due to quotas or permissions even after offline synthesis passes. The function uses the account shared concurrency pool, so it does not reserve capacity or require a quota increase simply to deploy. API throttling and DynamoDB throughput ceilings remain in place; they are not hard billing caps.
+
+## Recovering from an initial concurrency-quota failure
+
+If the initial template failed with `UnreservedConcurrentExecution below its minimum`, update the checkout to the shared-pool version and rebuild. Inspect the stack status before choosing recovery:
+
+```sh
+aws cloudformation describe-stacks --stack-name EmployeeApp --region us-east-1 --query 'Stacks[0].StackStatus' --output text
+```
+
+Do not blindly delete the stack or retained DynamoDB table. A failed deployment may leave resources behind. A CREATE_FAILED stack with preserved resources and a ROLLBACK_COMPLETE stack require different recovery steps; retain the actual status/error output when troubleshooting. The OIDC provider may also already exist from a partial attempt, so check it again before retrying. No employee data is automatically migrated or removed during this fix.
 
 ## Connect GitHub Actions
 

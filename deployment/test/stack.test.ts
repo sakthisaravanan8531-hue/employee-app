@@ -29,13 +29,13 @@ test("DynamoDB is on-demand, retained, protected and capacity limited", () => {
   });
   template.hasResource("AWS::DynamoDB::Table", { DeletionPolicy: "Retain" });
 });
-test("Lambda is ARM, small, concurrency limited and outside a VPC", () => {
+test("Lambda is ARM, small, uses the shared pool and is outside a VPC", () => {
   template.hasResourceProperties("AWS::Lambda::Function", {
     Runtime: "nodejs22.x",
     Architectures: ["arm64"],
     MemorySize: 256,
     Timeout: 15,
-    ReservedConcurrentExecutions: 2,
+    ReservedConcurrentExecutions: Match.absent(),
     VpcConfig: Match.absent(),
   });
 });
@@ -132,4 +132,5 @@ test("release role can pause only the application Lambda", () => {
   );
   assert.ok(statement);
   assert.notEqual(statement.Resource, "*");
+  assert.ok(statement.Action.includes("lambda:DeleteFunctionConcurrency"));
 });

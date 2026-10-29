@@ -4,7 +4,7 @@ The approved goal is a low-traffic demonstration application at minimum practica
 
 ## Included controls
 
-- Lambda uses 256 MB, a 15-second timeout, two reserved concurrent executions and no provisioned concurrency.
+- Lambda uses 256 MB, a 15-second timeout, the shared account concurrency pool (no positive reservation) and no provisioned concurrency.
 - API Gateway is configured for a steady rate of two requests/second and a burst of five. Throttling is best-effort, not a billing limit. Heavy or bursty usage may receive HTTP 429 and require retry.
 - DynamoDB uses on-demand billing with maximum read/write throughput of ten request units each. Transactions consume additional units; storage is separately billed. Encryption uses the AWS-owned key to avoid customer-managed KMS key costs.
 - Lambda/API logs expire after seven days. Request bodies, passwords and session cookies are excluded from application logs.
@@ -20,7 +20,7 @@ A default Amplify domain avoids domain-registration and Route 53 hosted-zone cha
 
 ## Pause or remove the demo
 
-Use **GitHub Actions → Application ON or OFF → Run workflow** to choose `off`, `on` or `status`. OFF sets Lambda concurrency to zero and publishes a small maintenance page; ON tests/builds/releases the app and restores concurrency to two. Push-triggered releases skip publication while OFF. See [application-power.md](application-power.md) for prerequisites, failure handling and CLI alternatives.
+Use **GitHub Actions → Application ON or OFF → Run workflow** to choose `off`, `on` or `status`. OFF sets Lambda concurrency to zero and publishes a small maintenance page; ON tests/builds/releases the app and removes the OFF reservation to restore shared-pool execution. Push-triggered releases skip publication while OFF. See [application-power.md](application-power.md) for prerequisites, failure handling and CLI alternatives.
 
 This prevents new backend invocations but does not delete or fully stop hosting/storage resources. At zero traffic, Lambda already has no idle execution cost. Maintenance-page transfer, DynamoDB storage, Secrets Manager, CloudWatch and direct API Gateway requests can still bill. Verify actual billing rather than treating OFF as a zero-cost guarantee.
 

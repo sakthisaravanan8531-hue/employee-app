@@ -51,7 +51,6 @@ export class EmployeeStack extends cdk.Stack {
       ),
       memorySize: 256,
       timeout: cdk.Duration.seconds(15),
-      reservedConcurrentExecutions: 2,
       logGroup: runtimeLogs,
       environment: {
         NODE_ENV: "production",
@@ -167,6 +166,7 @@ export class EmployeeStack extends cdk.Stack {
           "lambda:GetFunctionConfiguration",
           "lambda:GetFunctionConcurrency",
           "lambda:PutFunctionConcurrency",
+          "lambda:DeleteFunctionConcurrency",
           "lambda:UpdateFunctionCode",
           "lambda:PublishVersion",
         ],

@@ -9,7 +9,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import release
 
 def capacity(function, count):
-    release.aws('lambda','put-function-concurrency','--function-name',function,'--reserved-concurrent-executions',str(count))
+    if count is None:
+        release.aws('lambda','delete-function-concurrency','--function-name',function)
+    elif count == 0:
+        release.aws('lambda','put-function-concurrency','--function-name',function,'--reserved-concurrent-executions','0')
+    else:
+        raise ValueError('Only OFF (zero) or shared-pool ON (None) is supported')
     observed=release.aws('lambda','get-function-concurrency','--function-name',function).get('ReservedConcurrentExecutions')
     if observed!=count:
         raise RuntimeError('Concurrency update was not confirmed; inspect the AWS function before continuing')
@@ -44,7 +49,7 @@ def main(action=None):
     else:
         release.env('API_URL');release.env('RELEASE_SHA')
         try:
-            capacity(function,2)
+            capacity(function,None)
             release.main()
         except BaseException:
             capacity(function,0)

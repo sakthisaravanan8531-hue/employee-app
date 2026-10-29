@@ -4,11 +4,11 @@ Use **GitHub → employee-app → Actions → Application ON or OFF → Run work
 
 These controls become usable after the AWS stack and GitHub repository variables are configured. The stack must include the new Lambda concurrency permissions; apply a reviewed CDK update with your authorized operator identity first. AWS access has not yet been connected in this development environment, so the live switch has not been exercised.
 
-| Selection | Result                                                                                                                                                                      |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `off`     | Sets Lambda reserved concurrency to zero, verifies it, then publishes a small offline page to Amplify and checks it appeared.                                               |
-| `on`      | Tests/builds the selected main-branch commit, restores concurrency to two, publishes/verifies the Lambda and React app.                                                     |
-| `status`  | Reads backend reserved concurrency without modifying resources. Zero means off; another value means backend invocation is enabled, not that every application check passed. |
+| Selection | Result                                                                                                                                                                                                                    |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `off`     | Sets Lambda reserved concurrency to zero, verifies it, then publishes a small offline page to Amplify and checks it appeared.                                                                                             |
+| `on`      | Tests/builds the selected main-branch commit, removes the zero-concurrency reservation to restore the account shared pool, publishes/verifies the Lambda and React app.                                                   |
+| `status`  | Reads backend reserved concurrency without modifying resources. Zero means off; an absent reservation (shown as null), or a positive value, means backend invocation is enabled, not that every application check passed. |
 
 The OFF setting blocks **new** Lambda invocations; in-flight requests can finish. Existing browser tabs may show the old interface until refreshed, but backend requests cannot run while concurrency is zero. Employee records, credentials and previous Lambda versions are preserved. Amplify remains online to serve the offline page; this is an application pause, not deletion of all AWS resources.
 
