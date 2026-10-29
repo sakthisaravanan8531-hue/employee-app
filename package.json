@@ -1,0 +1,24 @@
+{
+  "name": "employee-app",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "frontend",
+    "backend",
+    "deployment"
+  ],
+  "scripts": {
+    "dev": "concurrently -k \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "test": "npm test -w backend && npm test -w frontend",
+    "build": "npm run build -w frontend && npm run build -w deployment",
+    "check": "npm test && npm run build && npm run test:infra && npm run test:release && npm run synth -w deployment",
+    "dev:local": "node deployment/scripts/local-dev.mjs",
+    "test:infra": "npm test -w deployment",
+    "test:release": "python3 -m unittest discover -s deployment/test -p \"test_*.py\" -v"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "embedded-postgres": "^18.1.0-beta.15",
+    "prettier": "^3.9.10"
+  }
+}

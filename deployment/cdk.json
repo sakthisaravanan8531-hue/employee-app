@@ -1,0 +1,8 @@
+{
+  "app": "node --import tsx bin/app.ts",
+  "context": {
+    "account": "912010732788",
+    "region": "us-east-1",
+    "githubRepository": "sakthisaravanan8531-hue/employee-app"
+  }
+}
