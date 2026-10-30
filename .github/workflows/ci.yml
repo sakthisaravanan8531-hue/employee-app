@@ -42,6 +42,8 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Inspect non-secret AWS identity claims
+        run: python3 deployment/scripts/oidc-diagnostics.py
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.DEPLOYMENT_ROLE_ARN }}

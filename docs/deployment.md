@@ -92,3 +92,7 @@ Do not assume a template update eliminates its bill. The old stack used retained
 ## Cleanup
 
 Export required DynamoDB records before teardown. The table is deletion-protected and retained; deliberately disable protection and remove it only when appropriate. Retained data storage can continue billing after stack deletion. Review the generated secret, Lambda versions, Amplify app, budget, logs and CDK asset storage. Do not delete shared bootstrap resources or a shared GitHub OIDC provider blindly. See costs.md for pause/charge limitations.
+
+## GitHub OIDC sign-in diagnostics
+
+If AWS rejects `AssumeRoleWithWebIdentity`, inspect the workflow step **Inspect non-secret AWS identity claims**. It prints only an allowlist of issuer, audience, subject and repository/environment metadata, never the JWT or bearer request credential. Compare those claims to the actual IAM trust policy; do not broaden the trust policy with wildcards merely to make a run pass. Also verify the IAM OIDC provider includes the STS audience. A new workflow dispatch uses the latest diagnostic step; rerunning an older run uses its old workflow revision.
