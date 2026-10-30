@@ -15,7 +15,17 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 
 def aws(*args):
-    result = subprocess.run(['aws', *args, '--output', 'json', '--no-cli-pager'], check=True, capture_output=True, text=True)
+    try:
+        result = subprocess.run(['aws', *args, '--output', 'json', '--no-cli-pager'], check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as error:
+        # Successful Amplify responses contain signed URLs: never dump stdout.
+        # Surface only AWS's service error, with URL query strings/tokens removed.
+        match = re.search(r'An error occurred \([^\n]+', error.stderr or '')
+        detail = match.group(0) if match else 'AWS CLI failed; inspect the operation with an authorized operator session.'
+        detail = re.sub(r'(https?://[^\s?]+)\?[^\s]+', r'\1?[redacted]', detail)
+        detail = re.sub(r'\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b', '[redacted token]', detail)
+        detail = re.sub(r'\b(?:AKIA|ASIA)[A-Z0-9]{16}\b', '[redacted access key]', detail)
+        raise RuntimeError(f'AWS {args[0]} {args[1]} failed (exit {error.returncode}): {detail[:4000]}') from None
     return json.loads(result.stdout) if result.stdout.strip() else {}
 
 def env(name):

@@ -83,4 +83,23 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'publish failed'):release.main()
         self.assertFalse(any(c[:2]==('lambda','update-alias') for c in self.commands))
 
+class AwsErrorTests(unittest.TestCase):
+    def test_service_error_is_visible_without_success_payload(self):
+        failure=release.subprocess.CalledProcessError(254,['aws'],output='SIGNED-URL-DO-NOT-LOG',stderr='An error occurred (AccessDeniedException) when calling the CreateDeployment operation: Role cannot access branch')
+        with patch.object(release.subprocess,'run',side_effect=failure):
+            with self.assertRaisesRegex(RuntimeError,'AccessDeniedException') as error:release.aws('amplify','create-deployment')
+        self.assertIn('exit 254',str(error.exception));self.assertNotIn('SIGNED-URL',str(error.exception))
+    def test_service_error_redacts_signed_queries_and_tokens(self):
+        jwt='eyJhbGciOiJIUzI1NiJ9.payload.signature'
+        failure=release.subprocess.CalledProcessError(254,['aws'],stderr='An error occurred (BadRequestException) when calling the CreateDeployment operation: https://example.test/file?X-Amz-Signature=SECRET '+jwt)
+        with patch.object(release.subprocess,'run',side_effect=failure):
+            with self.assertRaises(RuntimeError) as error:release.aws('amplify','create-deployment')
+        self.assertNotIn('SECRET',str(error.exception));self.assertNotIn(jwt,str(error.exception))
+    def test_successful_signed_response_is_returned_but_not_logged(self):
+        import contextlib,io
+        output=io.StringIO();result=release.subprocess.CompletedProcess(['aws'],0,stdout=json.dumps({'zipUploadUrl':'https://example.test/?secret=PRIVATE'}))
+        with patch.object(release.subprocess,'run',return_value=result),contextlib.redirect_stdout(output):
+            returned=release.aws('amplify','create-deployment')
+        self.assertIn('PRIVATE',returned['zipUploadUrl']);self.assertEqual(output.getvalue(),'')
+
 if __name__=='__main__':unittest.main()
