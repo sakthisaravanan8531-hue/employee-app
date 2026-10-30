@@ -167,3 +167,28 @@ test("Amplify release permissions include the deployment resource ARN", () => {
   );
   assert.ok(!arns.includes("*"));
 });
+
+test("Lambda alias permissions cover the base function and live alias", () => {
+  const policy = Object.values(template.toJSON().Resources).find(
+    (r: any) =>
+      r.Type === "AWS::IAM::Policy" &&
+      JSON.stringify(r.Properties.Roles).includes("DeploymentRole"),
+  ) as any;
+  const statements = policy.Properties.PolicyDocument.Statement;
+  const base = statements.find((s: any) =>
+    s.Action.includes("lambda:GetFunction"),
+  ).Resource;
+  const aliases = statements.find((s: any) =>
+    s.Action.includes("lambda:GetAlias"),
+  );
+  assert.ok(aliases.Action.includes("lambda:UpdateAlias"));
+  const resources = Array.isArray(aliases.Resource)
+    ? aliases.Resource
+    : [aliases.Resource];
+  assert.ok(
+    resources.some((r: any) => JSON.stringify(r) === JSON.stringify(base)),
+  );
+  assert.ok(resources.some((r: any) => JSON.stringify(r).includes(":live")));
+  assert.equal(resources.length, 2);
+  assert.ok(!resources.includes("*"));
+});

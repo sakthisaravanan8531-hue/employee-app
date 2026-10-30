@@ -180,7 +180,8 @@ export class EmployeeStack extends cdk.Stack {
     deployRole.addToPolicy(
       new iam.PolicyStatement({
         actions: ["lambda:GetAlias", "lambda:UpdateAlias"],
-        resources: [`${fn.functionArn}:live`],
+        // Lambda's alias APIs also authorize the unqualified function resource.
+        resources: [fn.functionArn, `${fn.functionArn}:live`],
       }),
     );
     deployRole.addToPolicy(
