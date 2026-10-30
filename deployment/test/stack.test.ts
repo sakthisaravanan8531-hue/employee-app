@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import { App } from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
 import { EmployeeStack } from "../lib/employee-stack";
-const app = new App({ context: { alertEmail: "alerts@example.test" } });
+const app = new App({
+  context: {
+    alertEmail: "alerts@example.test",
+    githubOidcSubject:
+      "repo:sakthisaravanan8531-hue@341943856/employee-app@1438183412:environment:production",
+  },
+});
 const template = Template.fromStack(
   new EmployeeStack(app, "TestEmployee", {
     env: { account: "912010732788", region: "us-east-1" },
@@ -77,7 +83,7 @@ test("GitHub deploy role trusts only the production environment", () => {
             StringEquals: {
               "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
               "token.actions.githubusercontent.com:sub":
-                "repo:sakthisaravanan8531-hue/employee-app:environment:production",
+                "repo:sakthisaravanan8531-hue@341943856/employee-app@1438183412:environment:production",
             },
           },
         }),

@@ -145,13 +145,17 @@ export class EmployeeStack extends cdk.Stack {
     const repo =
       this.node.tryGetContext("githubRepository") ||
       "sakthisaravanan8531-hue/employee-app";
+    // Use the exact observed GitHub subject, including immutable IDs when present.
+    const githubSubject =
+      this.node.tryGetContext("githubOidcSubject") ||
+      `repo:${repo}:environment:production`;
     const deployRole = new iam.Role(this, "DeploymentRole", {
       assumedBy: new iam.WebIdentityPrincipal(
         provider.openIdConnectProviderArn,
         {
           StringEquals: {
             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-            "token.actions.githubusercontent.com:sub": `repo:${repo}:environment:production`,
+            "token.actions.githubusercontent.com:sub": githubSubject,
           },
         },
       ),

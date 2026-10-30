@@ -3,6 +3,7 @@
 import base64
 import json
 import os
+from pathlib import Path
 import urllib.parse
 import urllib.request
 
@@ -34,6 +35,8 @@ def main():
     except Exception:
         raise RuntimeError('GitHub OIDC request failed; no token or request credentials were logged') from None
     claims=safe_claims(token)
-    print(json.dumps({'expectedSubject':'repo:sakthisaravanan8531-hue/employee-app:environment:production','expectedAudience':'sts.amazonaws.com','claims':claims},indent=2))
+    config=json.loads((Path(__file__).resolve().parents[1]/'cdk.json').read_text())['context']
+    expected=config.get('githubOidcSubject') or f"repo:{config['githubRepository']}:environment:production"
+    print(json.dumps({'expectedSubject':expected,'expectedAudience':'sts.amazonaws.com','claims':claims},indent=2))
 
 if __name__=='__main__':main()

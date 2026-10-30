@@ -3,6 +3,7 @@
   "context": {
     "account": "912010732788",
     "region": "us-east-1",
-    "githubRepository": "sakthisaravanan8531-hue/employee-app"
+    "githubRepository": "sakthisaravanan8531-hue/employee-app",
+    "githubOidcSubject": "repo:sakthisaravanan8531-hue@341943856/employee-app@1438183412:environment:production"
   }
 }
