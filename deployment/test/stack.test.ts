@@ -140,3 +140,30 @@ test("release role can pause only the application Lambda", () => {
   assert.notEqual(statement.Resource, "*");
   assert.ok(statement.Action.includes("lambda:DeleteFunctionConcurrency"));
 });
+
+test("Amplify release permissions include the deployment resource ARN", () => {
+  const resources = template.toJSON().Resources;
+  const policy = Object.values(resources).find(
+    (r: any) =>
+      r.Type === "AWS::IAM::Policy" &&
+      JSON.stringify(r.Properties.Roles).includes("DeploymentRole"),
+  ) as any;
+  const statement = policy.Properties.PolicyDocument.Statement.find((s: any) =>
+    s.Action.includes("amplify:CreateDeployment"),
+  );
+  assert.ok(statement);
+  const arns = Array.isArray(statement.Resource)
+    ? statement.Resource
+    : [statement.Resource];
+  assert.ok(
+    arns.some((arn: any) =>
+      JSON.stringify(arn).includes("/branches/main/deployments/*"),
+    ),
+  );
+  assert.ok(
+    arns.some((arn: any) =>
+      JSON.stringify(arn).includes("/branches/main/jobs/*"),
+    ),
+  );
+  assert.ok(!arns.includes("*"));
+});

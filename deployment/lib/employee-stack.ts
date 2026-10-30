@@ -192,6 +192,7 @@ export class EmployeeStack extends cdk.Stack {
         ],
         resources: [
           `arn:${this.partition}:amplify:${this.region}:${this.account}:apps/${app.attrAppId}/branches/main`,
+          `arn:${this.partition}:amplify:${this.region}:${this.account}:apps/${app.attrAppId}/branches/main/deployments/*`,
           `arn:${this.partition}:amplify:${this.region}:${this.account}:apps/${app.attrAppId}/branches/main/jobs/*`,
         ],
       }),
